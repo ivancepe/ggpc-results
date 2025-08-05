@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Examinee Result</title>
+  <link rel="shortcut icon" href="images/gkg.ico" type="image/x-icon">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="container mx-auto px-2 sm:px-4 lg:px-6 py-4 max-w-6xl">
+    <!-- Back Button -->
+    <div class="mb-4 sm:mb-6">
+      <a href="index.html" class="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200 group">
+        <span class="text-lg group-hover:translate-x-[-2px] transition-transform duration-200">←</span>
+        <span>Back to Results List</span>
+      </a>
+    </div>
+
+    <!-- Page Title -->
+    <div class="mb-6 sm:mb-8">
+      <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Examinee Result</h1>
+      <p class="text-gray-600 mt-2">Detailed examination results and analysis</p>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="flex justify-center items-center py-12">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      <span class="ml-3 text-gray-600">Loading result details...</span>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorState" class="hidden">
+      <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <div class="text-red-600 text-lg font-semibold mb-2">⚠️ Error Loading Results</div>
+        <p id="errorMessage" class="text-red-700"></p>
+        <button onclick="location.reload()" class="mt-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors">
+          Try Again
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="hidden space-y-6">
+      <!-- Examinee Summary Card -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
+          <h2 class="text-xl font-semibold text-gray-900">Examinee Information</h2>
+        </div>
+        <div id="summaryContent" class="p-6">
+          <!-- Content will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Exam Results Overview -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-gray-200">
+          <h2 class="text-xl font-semibold text-gray-900">Score Breakdown</h2>
+        </div>
+        <div id="scoreBreakdown" class="p-6">
+          <!-- Content will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Detailed Answers -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-4 border-b border-gray-200">
+          <h2 class="text-xl font-semibold text-gray-900">Detailed Answers</h2>
+          <p class="text-gray-600 text-sm mt-1">Question-by-question breakdown with correct answers</p>
+        </div>
+        <div id="answersContent" class="divide-y divide-gray-100">
+          <!-- Content will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- General Information & Medical History -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <details class="group">
+          <summary class="bg-gradient-to-r from-orange-50 to-yellow-50 px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gradient-to-r hover:from-orange-100 hover:to-yellow-100 transition-all duration-200">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-semibold text-gray-900">General Information & Medical History</h2>
+                <p class="text-gray-600 text-sm mt-1">Additional personal and medical information</p>
+              </div>
+              <span class="text-gray-400 group-open:rotate-180 transition-transform duration-200">▼</span>
+            </div>
+          </summary>
+          <div id="extraContent" class="p-6">
+            <!-- Content will be populated by JavaScript -->
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadDetail() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const email = urlParams.get('email');
+      
+      if (!email) {
+        showError('Email parameter not specified in URL.');
+        return;
+      }
+
+      try {
+        const resp = await fetch('/.netlify/functions/proxy');
+        const { success, results, error } = await resp.json();
+
+        if (!success) {
+          showError('Failed to fetch data: ' + (error || 'Unknown error'));
+          return;
+        }
+
+        const result = results.find(r => r.Email === email);
+        if (!result) {
+          showError('No examination record found for this email address.');
+          return;
+        }
+
+        hideLoading();
+        populateContent(result);
+      } catch (err) {
+        showError('Network error: ' + err.message);
+      }
+    }
+
+    function showError(message) {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('errorState').style.display = 'block';
+      document.getElementById('errorMessage').textContent = message;
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+    }
+
+    function populateContent(result) {
+      populateSummary(result);
+      populateScoreBreakdown(result);
+      populateAnswers(result);
+      populateExtraInfo(result);
+    }
+
+    function populateSummary(result) {
+      const status = result["Exam Status"] || 'N/A';
+      const score = result.Score || 'N/A';
+      
+      let statusColor = 'bg-gray-100 text-gray-700';
+      let statusIcon = '📝';
+      
+      if (status.toLowerCase().includes('pass')) {
+        statusColor = 'bg-green-100 text-green-800';
+        statusIcon = '✅';
+      } else if (status.toLowerCase().includes('fail')) {
+        statusColor = 'bg-red-100 text-red-800';
+        statusIcon = '❌';
+      }
+
+      document.getElementById('summaryContent').innerHTML = `
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Full Name</p>
+            <p class="text-lg font-semibold text-gray-900">${result.Name || 'N/A'}</p>
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Email Address</p>
+            <p class="text-lg text-gray-900 break-all">${result.Email || 'N/A'}</p>
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Final Score</p>
+            <p class="text-2xl font-bold text-blue-600">${score}</p>
+          </div>
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-gray-500 uppercase tracking-wide">Status</p>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusColor}">
+              <span class="mr-1">${statusIcon}</span>
+              ${status}
+            </span>
+          </div>
+        </div>
+      `;
+    }
+
+    function populateScoreBreakdown(result) {
+      try {
+        const arr = JSON.parse(result["Exam Version"]);
+        const ans = JSON.parse(result.Answers);
+        
+        const categories = [
+          { start: 1, end: 10, label: "English Grammar", color: "blue" },
+          { start: 11, end: 20, label: "Error Identification", color: "green" },
+          { start: 21, end: 30, label: "Numerical Reasoning", color: "purple" },
+          { start: 31, end: 40, label: "Analogy", color: "orange" },
+          { start: 41, end: 50, label: "Abstract", color: "pink" },
+          { start: 51, end: 55, label: "Bonus Questions", color: "indigo" }
+        ];
+
+        let breakdown = categories.map(cat => {
+          const questions = arr.filter((_, idx) => {
+            const qNum = idx + 1;
+            return qNum >= cat.start && qNum <= cat.end;
+          });
+
+          let correct = 0;
+          questions.forEach((q, idx) => {
+            const qNum = cat.start + idx;
+            let answer = '';
+            
+            if (cat.label === "Abstract") {
+              const abstractIdx = (cat.start - 41) + idx + 1;
+              answer = ans[`qar${abstractIdx}`] || '';
+            } else {
+              answer = ans[q.key] || '';
+            }
+            
+            if (answer === q.correctAnswer) correct++;
+          });
+
+          const percentage = questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0;
+          
+          return { ...cat, correct, total: questions.length, percentage };
+        });
+
+        const html = `
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${breakdown.map(cat => `
+              <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-semibold text-gray-900 text-sm">${cat.label}</h3>
+                  <span class="text-lg font-bold text-${cat.color}-600">${cat.correct}/${cat.total}</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                  <div class="bg-${cat.color}-500 h-2 rounded-full transition-all duration-500" style="width: ${cat.percentage}%"></div>
+                </div>
+                <p class="text-sm text-gray-600">${cat.percentage}% correct</p>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        document.getElementById('scoreBreakdown').innerHTML = html;
+      } catch (err) {
+        document.getElementById('scoreBreakdown').innerHTML = `
+          <p class="text-gray-500 italic">Unable to calculate score breakdown</p>
+        `;
+      }
+    }
+
+    function populateAnswers(result) {
+      try {
+        const arr = JSON.parse(result["Exam Version"]);
+        const ans = JSON.parse(result.Answers);
+        
+        const categoryLabels = [
+          { start: 1, end: 10, label: "English Grammar", color: "blue" },
+          { start: 11, end: 20, label: "Error Identification", color: "green" },
+          { start: 21, end: 30, label: "Numerical Reasoning", color: "purple" },
+          { start: 31, end: 40, label: "Analogy", color: "orange" },
+          { start: 41, end: 50, label: "Abstract", color: "pink" },
+          { start: 51, end: 55, label: "Bonus Questions", color: "indigo" }
+        ];
+
+        let content = '';
+        let lastCategory = '';
+
+        arr.forEach((q, idx) => {
+          const qNum = idx + 1;
+          let category = categoryLabels.find(c => qNum >= c.start && qNum <= c.end);
+          
+          // Skip questions beyond category 55
+          if (!category && qNum >= 56) return;
+
+          if (category && category.label !== lastCategory) {
+            content += `
+              <div class="bg-gradient-to-r from-${category.color}-50 to-${category.color}-100 px-6 py-4">
+                <h3 class="text-lg font-semibold text-${category.color}-900">${category.label}</h3>
+                <p class="text-sm text-${category.color}-700">Questions ${category.start}-${category.end}</p>
+              </div>
+            `;
+            lastCategory = category.label;
+          }
+
+          // Get answer
+          let answer = '';
+          if (category.label === "Abstract") {
+            const abstractIdx = idx - 40 + 1;
+            answer = ans[`qar${abstractIdx}`] || '';
+          } else {
+            answer = ans[q.key] || '';
+          }
+
+          const answerObj = q.options?.find(o => o.value === answer);
+          const correctObj = q.options?.find(o => o.value === q.correctAnswer);
+          const isCorrect = answer === q.correctAnswer;
+          const hasAnswer = answer !== '';
+
+          // Question content
+          let questionContent = `<div class="font-medium text-gray-900 mb-2">${q.questionText || ''}</div>`;
+          if (category.label === "Abstract" && q.image) {
+            questionContent += `<div class="my-3"><img src="${q.image}" alt="Question Image" class="max-h-40 w-auto rounded border" onerror="this.style.display='none'"></div>`;
+          }
+
+          // Options display
+          const choices = q.options ? q.options.map(o => {
+            const isSelected = o.value === answer;
+            const isCorrectChoice = o.value === q.correctAnswer;
+            
+            let choiceClass = 'border rounded-lg p-3 transition-all ';
+            if (isSelected && isCorrect) choiceClass += 'bg-green-50 border-green-300';
+            else if (isSelected) choiceClass += 'bg-red-50 border-red-300';
+            else if (isCorrectChoice) choiceClass += 'bg-green-50 border-green-300';
+            else choiceClass += 'bg-gray-50 border-gray-200';
+
+            let choiceLabel = category.label === "Abstract" 
+              ? o.label.replace(/^[a-z]\.\s*/i, '')
+              : o.label;
+
+            let choiceContent = `<span class="font-medium">${choiceLabel}</span>`;
+            if (category.label === "Abstract" && o.image) {
+              choiceContent += `<img src="${o.image}" alt="Choice Image" class="mt-2 max-h-20 w-auto rounded" onerror="this.style.display='none'">`;
+            }
+
+            let indicators = '';
+            if (isSelected) indicators += '<span class="ml-2 text-blue-600">👤</span>';
+            if (isCorrectChoice) indicators += '<span class="ml-2 text-green-600">✓</span>';
+
+            return `<div class="${choiceClass}">${choiceContent}${indicators}</div>`;
+          }).join('') : '';
+
+          let statusIcon = '';
+          let statusText = '';
+          if (!hasAnswer) {
+            statusIcon = '⏭️';
+            statusText = 'Skipped';
+          } else if (isCorrect) {
+            statusIcon = '✅';
+            statusText = 'Correct';
+          } else {
+            statusIcon = '❌';
+            statusText = 'Incorrect';
+          }
+
+          content += `
+            <div class="p-6 hover:bg-gray-50 transition-colors">
+              <div class="flex flex-col lg:flex-row lg:gap-8">
+                <div class="lg:w-1/2 mb-4 lg:mb-0">
+                  <div class="flex items-center gap-2 mb-3">
+                    <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-sm font-medium">Q${qNum}</span>
+                    <span class="text-lg">${statusIcon}</span>
+                    <span class="text-sm font-medium ${isCorrect ? 'text-green-600' : hasAnswer ? 'text-red-600' : 'text-yellow-600'}">${statusText}</span>
+                  </div>
+                  ${questionContent}
+                </div>
+                <div class="lg:w-1/2">
+                  <div class="space-y-2">
+                    ${choices}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        document.getElementById('answersContent').innerHTML = content || '<div class="p-6 text-gray-500 text-center">No questions found</div>';
+      } catch (err) {
+        document.getElementById('answersContent').innerHTML = '<div class="p-6 text-gray-500 text-center">Unable to load question details</div>';
+      }
+    }
+
+    function populateExtraInfo(result) {
+      try {
+        const extra = JSON.parse(result["Extra Answers"]);
+        if (!extra || typeof extra !== 'object') {
+          document.getElementById('extraContent').innerHTML = '<p class="text-gray-500 italic">No additional information provided</p>';
+          return;
+        }
+
+        const questionMap = {
+          'gov_exam_passed': 'Government Examination Passed',
+          'special_skills': 'Special Skills',
+          'drivers_license': 'Do you have a Driver\'s License?',
+          'drivers_license_type': 'Driver\'s License Type',
+          'willing_laguna_cavite': 'Willing to be assigned in Laguna/Cavite?',
+          'crime_accused': 'Ever been accused of a crime?',
+          'crime_details': 'Crime Details',
+          'social_org': 'Member of any social organization?',
+          'social_org_details': 'Organization Details',
+          'treated_by_doctor': 'Currently being treated by a doctor?',
+          'doctor_details': 'Medical Treatment Details',
+          'had_operation': 'Ever had an operation?',
+          'operation_details': 'Operation Details',
+          'receiving_treatment': 'Currently receiving medical treatment?',
+          'treatment_details': 'Treatment Details',
+          'serious_accident': 'Ever been in a serious accident?',
+          'accident_details': 'Accident Details',
+          'used_drugs': 'Used non-prescribed drugs in past 2 years?',
+          'drugs_details': 'Drug Use Details',
+          'asthma': 'Asthma',
+          'heart_disease': 'Heart Disease',
+          'chest_pain': 'Chest Pain'
+        };
+
+        const html = `
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            ${Object.entries(extra).map(([k, v]) => {
+              const question = questionMap[k] || k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+              const answer = v !== '' ? v : 'No answer provided';
+              const isEmpty = v === '';
+              
+              return `
+                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div class="font-medium text-gray-900 mb-2">${question}</div>
+                  <div class="text-gray-700 ${isEmpty ? 'italic text-gray-400' : 'bg-gray-100 rounded px-3 py-2'}">${answer}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+
+        document.getElementById('extraContent').innerHTML = html;
+      } catch (err) {
+        document.getElementById('extraContent').innerHTML = '<p class="text-gray-500 italic">Unable to load additional information</p>';
+      }
+    }
+
+    // Initialize
+    loadDetail();
+  </script>
+</body>
+</html>
