@@ -31,14 +31,24 @@
       <div class="hidden sm:block sm:w-16 lg:w-24 order-3"></div>
     </div>
 
-    <!-- Search Section -->
-    <div class="mb-4 sm:mb-6">
-      <input
-        type="text"
-        id="searchInput"
-        placeholder="Search by name or email..."
-        class="w-full p-3 sm:p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm sm:text-base"
-      />
+    <!-- Search + Filters Section -->
+    <div class="mb-4 sm:mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+      <div class="sm:col-span-2">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Search by name or email..."
+          class="w-full p-3 sm:p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm sm:text-base"
+        />
+      </div>
+
+      <!-- Status filter -->
+      <div class="flex items-center space-x-2">
+        <label for="statusFilter" class="text-sm text-gray-600 hidden sm:inline">Status:</label>
+        <select id="statusFilter" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm">
+          <option value="">All Statuses</option>
+        </select>
+      </div>
     </div>
 
     <!-- Results Counter -->
@@ -93,6 +103,7 @@
 
   <script>
     let allResults = [];
+    let filteredResults = [];
 
     async function loadData() {
       try {
@@ -106,13 +117,53 @@
           return;
         }
         
-        allResults = results;
-        renderResults(allResults);
-        updateResultsCount(allResults.length, allResults.length);
+        // results expected newest-first from proxy
+        allResults = Array.isArray(results) ? results : [];
+        populateStatusFilter(allResults);
+        applyFilters(); // render initial
       } catch (err) {
         document.getElementById('loadingState').style.display = 'none';
         alert('Error loading data: ' + err.message);
       }
+    }
+
+    function populateStatusFilter(data) {
+      const select = document.getElementById('statusFilter');
+      const statuses = new Set();
+      data.forEach(r => {
+        const s = r["Exam Status"] || r.Status || r.status || '';
+        if (s && String(s).trim() !== '') statuses.add(String(s).trim());
+      });
+      // Clear existing (keep first "All" option)
+      select.innerHTML = '<option value="">All Statuses</option>';
+      Array.from(statuses).sort().forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        select.appendChild(opt);
+      });
+    }
+
+    // Apply search + status filters and render
+    function applyFilters() {
+      const query = document.getElementById('searchInput').value.toLowerCase().trim();
+      const statusVal = document.getElementById('statusFilter').value.toLowerCase().trim();
+
+      filteredResults = allResults.filter(r => {
+        // status filter
+        if (statusVal) {
+          const s = (r["Exam Status"] || r.Status || r.status || '').toString().toLowerCase();
+          if (!s.includes(statusVal)) return false;
+        }
+        // search filter
+        if (!query) return true;
+        const name = (r.Name || '').toString().toLowerCase();
+        const email = (r.Email || '').toString().toLowerCase();
+        return name.includes(query) || email.includes(query);
+      });
+
+      renderResults(filteredResults);
+      updateResultsCount(filteredResults.length, allResults.length);
     }
 
     function renderResults(data) {
@@ -135,7 +186,7 @@
         card.onclick = () => viewResult(r.Email);
         
         // Determine status color
-        const status = r["Exam Status"] || '';
+        const status = r["Exam Status"] || r.Status || '';
         let statusColor = 'text-gray-600';
         if (status.toLowerCase().includes('pass')) statusColor = 'text-green-600';
         else if (status.toLowerCase().includes('fail')) statusColor = 'text-red-600';
@@ -176,7 +227,7 @@
         tr.onclick = () => viewResult(r.Email);
         
         // Determine status styling
-        const status = r["Exam Status"] || '';
+        const status = r["Exam Status"] || r.Status || '';
         let statusClass = 'text-gray-600';
         if (status.toLowerCase().includes('pass')) statusClass = 'text-green-600 font-medium';
         else if (status.toLowerCase().includes('fail')) statusClass = 'text-red-600 font-medium';
@@ -209,22 +260,13 @@
     }
 
     // Search functionality
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-      const query = e.target.value.toLowerCase().trim();
-      
-      if (query === '') {
-        renderResults(allResults);
-        updateResultsCount(allResults.length, allResults.length);
-        return;
-      }
-      
-      const filtered = allResults.filter(r =>
-        (r.Name && r.Name.toLowerCase().includes(query)) ||
-        (r.Email && r.Email.toLowerCase().includes(query))
-      );
-      
-      renderResults(filtered);
-      updateResultsCount(filtered.length, allResults.length);
+    document.getElementById('searchInput').addEventListener('input', () => {
+      applyFilters();
+    });
+
+    // Status filter change
+    document.getElementById('statusFilter').addEventListener('change', () => {
+      applyFilters();
     });
 
     function viewResult(email) {
